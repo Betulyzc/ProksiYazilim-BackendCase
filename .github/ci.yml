@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-migrate:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: caseuser
+          POSTGRES_PASSWORD: casepass
+          POSTGRES_DB: backend_case
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U caseuser -d backend_case"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DB_USER: caseuser
+      DB_PASSWORD: casepass
+      DB_NAME: backend_case
+      DB_HOST: localhost
+      DB_PORT: 5432
+      SECRET_KEY: testsecret
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      DATABASE_URL: postgresql+psycopg://caseuser:casepass@localhost:5432/backend_case
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13" 
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Wait for Postgres (optional)
+        run: |
+          for i in {1..20}; do
+            pg_isready -h localhost -p 5432 -U caseuser -d backend_case && break
+            sleep 2
+          done
+
+      - name: Run migrations
+        run: alembic upgrade head
+
