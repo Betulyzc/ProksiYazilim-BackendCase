@@ -1,3 +1,4 @@
+#!/bin/bash
 set -e
 
 echo " Alembic migration çalıştırılıyor..."
